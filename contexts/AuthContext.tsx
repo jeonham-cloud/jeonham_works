@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { User } from '../types';
-import { apiCall, initializeGoogleLogin, googleLogout, GoogleUserProfile } from '../lib/googleApi';
+import { apiCall, googleLogout, GoogleUserProfile } from '../lib/googleApi';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -49,16 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, []);
 
-  // Google 로그인 초기화
-  useEffect(() => {
-    initializeGoogleLogin(async (profile) => {
-      try {
-        await login(profile);
-      } catch (e) {
-        console.error('자동 로그인 실패:', e);
-      }
-    });
-  }, []);
+
 
   // localStorage 동기화
   useEffect(() => {
