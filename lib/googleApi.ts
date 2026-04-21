@@ -18,9 +18,12 @@ const GOOGLE_CLIENT_ID = '516543508529-llr7i1nnnnis69oaou14ncagikt0dhkt.apps.goo
 // ============================================================
 export async function apiCall<T = any>(action: string, params: Record<string, any> = {}): Promise<T> {
   try {
-    const response = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action, ...params }),
+    // GET 방식으로 호출 (CORS preflight 우회)
+    const body = JSON.stringify({ action, ...params });
+    const url = `${APPS_SCRIPT_URL}?payload=${encodeURIComponent(body)}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
       redirect: 'follow',
     });
 

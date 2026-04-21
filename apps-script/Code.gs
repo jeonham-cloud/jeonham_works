@@ -84,6 +84,9 @@ function handleRequest(e) {
     let payload;
     if (e.postData) {
       payload = JSON.parse(e.postData.contents);
+    } else if (e.parameter && e.parameter.payload) {
+      // GET 방식: ?payload=JSON문자열
+      payload = JSON.parse(decodeURIComponent(e.parameter.payload));
     } else {
       payload = e.parameter;
     }
