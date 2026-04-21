@@ -34,9 +34,11 @@ export default function RequestList() {
     const statusMatch = filterStatus === 'all' || r.status === filterStatus;
     const deptMatch = filterDept === 'all' || r.targetDepartment === filterDept || r.ccDepartment === filterDept;
     const categoryMatch = filterCategory === 'all' || r.category === filterCategory;
-    const searchMatch = r.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                        r.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        r.id.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase();
+    const searchMatch = !q ||
+      (r.title || '').toLowerCase().includes(q) ||
+      (r.description || '').toLowerCase().includes(q) ||
+      (r.id || '').toLowerCase().includes(q);
     return statusMatch && deptMatch && categoryMatch && searchMatch;
   });
 

@@ -63,16 +63,16 @@ export default function Admin() {
 
   const filteredUsers = useMemo(() => {
     return users.filter(u => {
-      const matchesSearch = 
-        u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchTerm.toLowerCase());
-      
+      const q = searchTerm.toLowerCase();
+      const matchesSearch = !q ||
+        (u.name || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q);
       const matchesRole = filterRole === 'all' || u.role === filterRole;
       const matchesDept = filterDept === 'all' || u.department === filterDept;
-      
       return matchesSearch && matchesRole && matchesDept;
     });
   }, [users, searchTerm, filterRole, filterDept]);
+
 
   const handleOpenCreateModal = () => {
     setEditingUser(null);

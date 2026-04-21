@@ -331,10 +331,12 @@ export default function Schedules() {
                   </div>
                   <div className="max-h-32 overflow-y-auto space-y-1 bg-white p-2 text-sm rounded-lg border-none shadow-inner">
                     {users
-                      .filter(u => 
-                        u.name.toLowerCase().includes(userSearchTerm.toLowerCase()) || 
-                        u.department.toLowerCase().includes(userSearchTerm.toLowerCase())
-                      )
+                      .filter(u => {
+                        const q = userSearchTerm.toLowerCase();
+                        return !q ||
+                          (u.name || '').toLowerCase().includes(q) ||
+                          (u.department || '').toLowerCase().includes(q);
+                      })
                       .map(u => (
                         <label key={u.id} className="flex items-center gap-2 p-1 hover:bg-surface-container-low rounded cursor-pointer">
                           <input type="checkbox" checked={selectedParticipants.includes(u.id)} onChange={() => toggleParticipant(u.id)} className="rounded text-primary"/>
