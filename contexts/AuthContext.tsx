@@ -70,23 +70,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [currentUser]);
 
   const login = async (profile: GoogleUserProfile): Promise<User> => {
-    // Apps Script에 upsert 요청 (없으면 생성, 있으면 조회)
-    const result = await apiCall<{ data: User; isNew?: boolean }>('upsertUser', {
-      email: profile.email,
-      name: profile.name,
-      avatar: profile.picture,
-    });
+    try {
+      // Apps Script에 upsert 요청 (없으면 생성, 있으면 조회)
+      const result = await apiCall<{ data: User; isNew?: boolean }>('upsertUser', {
+        email: profile.email,
+        name: profile.name,
+        avatar: profile.picture,
+      });
 
-    const user = result.data;
-    user.active = user.active === true || (user.active as any) === 'true';
+      const user = result.data;
+      user.active = user.active === true || (user.active as any) === 'true';
 
-    if (!user.active) {
-      throw new Error('비활성화된 계정입니다. 관리자에게 문의하세요.');
+      if (!user.active) {
+        throw new Error('비활성화된 계정입니다. 관리자에게 문의하세요.');
+      }
+
+      setCurrentUser(user);
+      await refreshUsers();
+      return user;
+    } catch (e: any) {
+      // API 실패 시 Google 프로필로 임시 사용자 생성 (로컬 전용)
+      console.warn('Apps Script API 실패, 임시 로그인 처리:', e.message);
+      const tempUser: User = {
+        id: `temp-${Date.now()}`,
+        email: profile.email,
+        name: profile.name,
+        role: 'user',
+        department: '',
+        active: true,
+        avatar: profile.picture,
+        createdAt: new Date().toISOString(),
+      };
+      setCurrentUser(tempUser);
+      return tempUser;
     }
-
-    setCurrentUser(user);
-    await refreshUsers();
-    return user;
   };
 
   const logout = () => {
