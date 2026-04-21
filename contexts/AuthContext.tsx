@@ -1,11 +1,45 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { User } from '../types';
+import { User, TaskRequest } from '../types';
 import { apiCall, googleLogout, GoogleUserProfile } from '../lib/googleApi';
+
+// ============================================================
+// Bootstrap 캐시 유틸리티
+// ============================================================
+const CACHE_KEY = 'gc_bootstrap';
+const CACHE_TTL = 5 * 60 * 1000; // 5분
+
+function getCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL) return null;
+    return data;
+  } catch { return null; }
+}
+
+function setCache(data: any) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
+  } catch {}
+}
+
+// ============================================================
+// Types
+// ============================================================
+export interface BootstrapData {
+  users: User[];
+  requests: TaskRequest[];
+  settings: Record<string, any>;
+  notifications: any[];
+}
 
 interface AuthContextType {
   currentUser: User | null;
   isAuthenticated: boolean;
   users: User[];
+  bootstrapData: BootstrapData | null;
+  bootstrapLoading: boolean;
   login: (profile: GoogleUserProfile) => Promise<User>;
   logout: () => void;
   createUser: (payload: { email: string; name: string; role: User['role']; department: string; active: boolean }) => Promise<void>;
@@ -13,6 +47,7 @@ interface AuthContextType {
   deleteUser: (userId: string) => Promise<void>;
   toggleUserStatus: (userId: string) => Promise<void>;
   refreshUsers: () => Promise<void>;
+  refreshBootstrap: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,33 +58,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return saved ? JSON.parse(saved) : null;
   });
   const [users, setUsers] = useState<User[]>([]);
+  const [bootstrapData, setBootstrapData] = useState<BootstrapData | null>(() => getCache());
+  const [bootstrapLoading, setBootstrapLoading] = useState(true);
 
-  // 사용자 목록 가져오기
+  // Bootstrap: 모든 초기 데이터를 한 번에 가져오기
+  const refreshBootstrap = useCallback(async (userId?: string) => {
+    const uid = userId || currentUser?.id;
+    try {
+      const result = await apiCall<{ data: BootstrapData }>('bootstrap', { userId: uid || '' });
+      setBootstrapData(result.data);
+      setUsers(result.data.users);
+      setCache(result.data);
+
+      // 현재 사용자 상태 동기화
+      if (uid) {
+        const updatedCurrent = result.data.users.find(u => u.id === uid);
+        if (updatedCurrent) setCurrentUser(updatedCurrent);
+      }
+    } catch (e) {
+      console.error('Bootstrap 실패:', e);
+    } finally {
+      setBootstrapLoading(false);
+    }
+  }, [currentUser?.id]);
+
+  // 사용자 목록만 가져오기 (경량)
   const refreshUsers = useCallback(async () => {
     try {
       const result = await apiCall<{ data: User[] }>('getUsers');
       setUsers(result.data);
-
-      // 현재 사용자 상태도 동기화
       if (currentUser) {
         const updatedCurrent = result.data.find(u => u.id === currentUser.id);
-        if (updatedCurrent) {
-          setCurrentUser(updatedCurrent);
-        }
+        if (updatedCurrent) setCurrentUser(updatedCurrent);
       }
     } catch (e) {
       console.error('사용자 목록 로드 실패:', e);
     }
   }, [currentUser?.id]);
 
-  // 초기 로드 + 주기적 폴링
+  // 앱 시작 시 bootstrap (캐시 있으면 즉시 표시 후 백그라운드 갱신)
   useEffect(() => {
-    refreshUsers();
-    const interval = setInterval(refreshUsers, 60000); // 60초 간격 폴링
+    if (bootstrapData) {
+      // 캐시 데이터를 즉시 사용
+      setUsers(bootstrapData.users);
+      if (currentUser) {
+        const updatedCurrent = bootstrapData.users.find(u => u.id === currentUser.id);
+        if (updatedCurrent) setCurrentUser(updatedCurrent);
+      }
+      setBootstrapLoading(false);
+      // 백그라운드에서 최신 데이터 갱신
+      refreshBootstrap();
+    } else {
+      refreshBootstrap();
+    }
+  }, []); // 최초 1회만
+
+  // 주기적 폴링 (120초 - 이전 30초에서 늘림)
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(() => refreshBootstrap(), 120_000);
     return () => clearInterval(interval);
-  }, []);
-
-
+  }, [currentUser?.id]);
 
   // localStorage 동기화
   useEffect(() => {
@@ -62,7 +131,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (profile: GoogleUserProfile): Promise<User> => {
     try {
-      // Apps Script에 upsert 요청 (없으면 생성, 있으면 조회)
       const result = await apiCall<{ data: User; isNew?: boolean }>('upsertUser', {
         email: profile.email,
         name: profile.name,
@@ -77,10 +145,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setCurrentUser(user);
-      await refreshUsers();
+      // 로그인 후 bootstrap으로 전체 데이터 로드
+      await refreshBootstrap(user.id);
       return user;
     } catch (e: any) {
-      // API 실패 시 Google 프로필로 임시 사용자 생성 (로컬 전용)
+      // API 실패 시 Google 프로필로 임시 사용자 생성
       console.warn('Apps Script API 실패, 임시 로그인 처리:', e.message);
       const tempUser: User = {
         id: `temp-${Date.now()}`,
@@ -102,6 +171,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       googleLogout(currentUser.email);
     }
     setCurrentUser(null);
+    localStorage.removeItem(CACHE_KEY);
+    setBootstrapData(null);
   };
 
   const createUser = async (payload: { email: string; name: string; role: User['role']; department: string; active: boolean }) => {
@@ -109,28 +180,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       alert('이미 등록된 이메일입니다.');
       return;
     }
-
     try {
-      await apiCall('upsertUser', {
-        email: payload.email,
-        name: payload.name,
-        avatar: '',
-      });
-
-      // 역할과 부서를 추가로 설정
+      await apiCall('upsertUser', { email: payload.email, name: payload.name, avatar: '' });
       const updatedUsers = await apiCall<{ data: User[] }>('getUsers');
       const newUser = updatedUsers.data.find(u => u.email === payload.email);
       if (newUser) {
         await apiCall('updateUser', {
           userId: newUser.id,
-          updates: {
-            role: payload.role,
-            department: payload.department,
-            active: String(payload.active),
-          }
+          updates: { role: payload.role, department: payload.department, active: String(payload.active) }
         });
       }
-
       await refreshUsers();
     } catch (e: any) {
       alert('사용자 등록 오류: ' + e.message);
@@ -142,34 +201,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       alert('이미 등록된 이메일입니다.');
       return;
     }
-
     const updates: Record<string, any> = { ...payload };
-    if (updates.active !== undefined) {
-      updates.active = String(updates.active);
-    }
-
+    if (updates.active !== undefined) updates.active = String(updates.active);
     await apiCall('updateUser', { userId, updates });
-
-    if (currentUser?.id === userId) {
-      setCurrentUser(prev => prev ? { ...prev, ...payload } : null);
-    }
+    if (currentUser?.id === userId) setCurrentUser(prev => prev ? { ...prev, ...payload } : null);
     await refreshUsers();
   };
 
   const deleteUser = async (userId: string) => {
-    if (currentUser?.id === userId) {
-      alert('본인 계정은 삭제할 수 없습니다.');
-      return;
-    }
+    if (currentUser?.id === userId) { alert('본인 계정은 삭제할 수 없습니다.'); return; }
     await apiCall('deleteUser', { userId });
     await refreshUsers();
   };
 
   const toggleUserStatus = async (userId: string) => {
-    if (currentUser?.id === userId) {
-      alert('본인 계정은 비활성화할 수 없습니다.');
-      return;
-    }
+    if (currentUser?.id === userId) { alert('본인 계정은 비활성화할 수 없습니다.'); return; }
     await apiCall('toggleUserStatus', { userId });
     await refreshUsers();
   };
@@ -179,6 +225,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       currentUser,
       isAuthenticated: !!currentUser,
       users,
+      bootstrapData,
+      bootstrapLoading,
       login,
       logout,
       createUser,
@@ -186,6 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       deleteUser,
       toggleUserStatus,
       refreshUsers,
+      refreshBootstrap,
     }}>
       {children}
     </AuthContext.Provider>

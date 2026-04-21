@@ -145,6 +145,9 @@ function handleRequest(e) {
       // Chat
       case 'sendChatNotification': result = sendChatNotification_(payload); break;
 
+      // Bootstrap - 앱 시작 시 모든 데이터를 한 번에 반환
+      case 'bootstrap': result = bootstrap_(payload); break;
+
       default:
         result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -868,4 +871,61 @@ function sendChatNotification_(payload) {
   }
 
   return { success: true };
+}
+
+// ============================================================
+// Bootstrap - 앱 시작 시 모든 초기 데이터를 한 번에 반환
+// ============================================================
+function bootstrap_(payload) {
+  const { userId } = payload || {};
+
+  const users = getSheetData_('users');
+  users.forEach(function(u) {
+    u.active = (u.active === true || u.active === 'true' || u.active === 'TRUE');
+  });
+
+  var requestsRaw = getSheetData_('requests');
+  var allComments = getSheetData_('comments');
+  var allHistory = getSheetData_('history');
+
+  var requests = requestsRaw.map(function(req) {
+    req.comments = allComments.filter(function(c) { return c.requestId === req.id; });
+    req.history = allHistory.filter(function(h) { return h.requestId === req.id; });
+    req.assignee = req.assigneeId ? {
+      id: req.assigneeId,
+      name: req.assigneeName,
+      department: req.assigneeDept,
+      role: req.assigneeRole,
+    } : null;
+    if (!req.category) req.category = '일반';
+    req.attachments = [];
+    return req;
+  });
+  requests.sort(function(a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
+
+  var settingsData = getSheetData_('settings');
+  var settings = {};
+  settingsData.forEach(function(row) {
+    var value = row.value;
+    try { value = JSON.parse(value); } catch(e) {}
+    if (value === 'true') value = true;
+    if (value === 'false') value = false;
+    settings[row.key] = value;
+  });
+
+  var notifications = [];
+  if (userId) {
+    notifications = getSheetData_('notifications')
+      .filter(function(n) { return n.userId === userId; })
+      .map(function(n) {
+        n.read = (n.read === true || n.read === 'true' || n.read === 'TRUE');
+        return n;
+      });
+    notifications.sort(function(a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
+  }
+
+  return {
+    success: true,
+    data: { users: users, requests: requests, settings: settings, notifications: notifications }
+  };
 }

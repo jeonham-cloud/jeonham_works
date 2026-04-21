@@ -54,13 +54,28 @@ export function RequestProvider({ children, onRequestsChange }: { children: Reac
     }
   }, []);
 
-  // 초기 로드 + 폴링
+  // bootstrap 데이터가 있으면 즉시 사용 (추가 API 호출 없음)
+  const { bootstrapData } = useAuth();
   useEffect(() => {
-    refreshRequests();
-    loadCategories();
-    const interval = setInterval(refreshRequests, 30000); // 30초
+    if (bootstrapData) {
+      setRequests(bootstrapData.requests);
+      onRequestsChange(bootstrapData.requests);
+      if (bootstrapData.settings?.categories) {
+        setCategories(bootstrapData.settings.categories);
+      }
+    }
+  }, [bootstrapData]);
+
+  // 초기 로드 + 폴링 (120초)
+  useEffect(() => {
+    // bootstrapData 없을 때만 직접 로드
+    if (!bootstrapData) {
+      refreshRequests();
+      loadCategories();
+    }
+    const interval = setInterval(refreshRequests, 120_000);
     return () => clearInterval(interval);
-  }, [refreshRequests, loadCategories]);
+  }, []);
 
   const addCategory = async (name: string) => {
     if (!categories.includes(name)) {
