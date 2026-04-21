@@ -64,19 +64,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Bootstrap: 모든 초기 데이터를 한 번에 가져오기
   const refreshBootstrap = useCallback(async (userId?: string) => {
     const uid = userId || currentUser?.id;
+    // temp- 사용자는 서버 동기화 생략
+    if (uid && uid.startsWith('temp-')) {
+      setBootstrapLoading(false);
+      return;
+    }
     try {
       const result = await apiCall<{ data: BootstrapData }>('bootstrap', { userId: uid || '' });
       setBootstrapData(result.data);
       setUsers(result.data.users);
       setCache(result.data);
 
-      // 현재 사용자 상태 동기화
+      // 현재 사용자 상태 동기화 (찾은 경우에만 교체)
       if (uid) {
         const updatedCurrent = result.data.users.find(u => u.id === uid);
         if (updatedCurrent) setCurrentUser(updatedCurrent);
+        // 찾지 못해도 currentUser를 null로 만들지 않음
       }
     } catch (e) {
-      console.error('Bootstrap 실패:', e);
+      console.error('Bootstrap 실패 (계속 진행):', e);
+      // 실패해도 로그인 상태 유지
     } finally {
       setBootstrapLoading(false);
     }
@@ -96,20 +103,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [currentUser?.id]);
 
-  // 앱 시작 시 bootstrap (캐시 있으면 즉시 표시 후 백그라운드 갱신)
+  // 앱 시작 시 bootstrap
   useEffect(() => {
+    // 캐시 데이터 즉시 적용
     if (bootstrapData) {
-      // 캐시 데이터를 즉시 사용
       setUsers(bootstrapData.users);
-      if (currentUser) {
-        const updatedCurrent = bootstrapData.users.find(u => u.id === currentUser.id);
-        if (updatedCurrent) setCurrentUser(updatedCurrent);
-      }
       setBootstrapLoading(false);
-      // 백그라운드에서 최신 데이터 갱신
+    }
+    // 로그인 상태라면 백그라운드에서 갱신, 아니면 loading 해제
+    if (currentUser) {
       refreshBootstrap();
     } else {
-      refreshBootstrap();
+      setBootstrapLoading(false);
     }
   }, []); // 최초 1회만
 
