@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { renderGoogleButton, GoogleUserProfile, decodeJwt, initializeGoogleLogin } from '../lib/googleApi';
-import { AlertCircle } from 'lucide-react';
+import { GoogleUserProfile, decodeJwt, GOOGLE_CLIENT_ID } from '../lib/googleApi';
+import { AlertCircle, Loader2 } from 'lucide-react';
 
 const Login: React.FC = () => {
   const { login, isAuthenticated } = useAuth();
@@ -11,27 +11,7 @@ const Login: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const googleBtnRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    // Google 로그인 콜백 설정
-    initializeGoogleLogin(handleGoogleLogin);
-
-    // Google 로그인 버튼 렌더링
-    const checkAndRender = () => {
-      if (window.google && googleBtnRef.current) {
-        renderGoogleButton(googleBtnRef.current);
-      } else {
-        // SDK가 아직 로드되지 않았으면 재시도
-        setTimeout(checkAndRender, 200);
-      }
-    };
-    checkAndRender();
-  }, []);
-
-  if (isAuthenticated) {
-    return <Navigate to="/" replace />;
-  }
-
-  const handleGoogleLogin = async (profile: GoogleUserProfile) => {
+  const handleGoogleLogin = useCallback(async (profile: GoogleUserProfile) => {
     setError('');
     setIsLoading(true);
     try {
@@ -42,7 +22,41 @@ const Login: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [login, navigate]);
+
+  useEffect(() => {
+    const initGSI = () => {
+      if (!window.google || !googleBtnRef.current) {
+        setTimeout(initGSI, 300);
+        return;
+      }
+
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: (response: { credential: string }) => {
+          const profile = decodeJwt(response.credential);
+          handleGoogleLogin(profile);
+        },
+        auto_select: false,
+        cancel_on_tap_outside: true,
+      });
+
+      window.google.accounts.id.renderButton(googleBtnRef.current, {
+        theme: 'outline',
+        size: 'large',
+        width: 360,
+        text: 'signin_with',
+        shape: 'pill',
+        locale: 'ko',
+      });
+    };
+
+    initGSI();
+  }, [handleGoogleLogin]);
+
+  if (isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -81,15 +95,15 @@ const Login: React.FC = () => {
               </p>
             </div>
 
-            {/* Google Sign-In Button */}
-            <div className="flex justify-center">
+            {/* Google SDK가 렌더링하는 버튼 */}
+            <div className="flex justify-center min-h-[44px]">
               <div ref={googleBtnRef} id="google-signin-btn"></div>
             </div>
 
             {isLoading && (
               <div className="text-center">
                 <div className="inline-flex items-center gap-2 text-sm text-blue-600">
-                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   로그인 처리 중...
                 </div>
               </div>
