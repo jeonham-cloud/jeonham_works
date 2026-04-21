@@ -41,6 +41,10 @@ const Login: React.FC = () => {
         cancel_on_tap_outside: true,
       });
 
+      // One Tap (팝업 차단 없이 동작)
+      window.google.accounts.id.prompt();
+
+      // 버튼도 렌더링 (클릭하면 One Tap 재시도)
       window.google.accounts.id.renderButton(googleBtnRef.current, {
         theme: 'outline',
         size: 'large',
@@ -95,7 +99,7 @@ const Login: React.FC = () => {
               </p>
             </div>
 
-            {/* Google SDK가 렌더링하는 버튼 */}
+            {/* Google 공식 버튼 */}
             <div className="flex justify-center min-h-[44px]">
               <div ref={googleBtnRef} id="google-signin-btn"></div>
             </div>
@@ -118,10 +122,11 @@ const Login: React.FC = () => {
               </div>
             </div>
 
-            <p className="text-xs text-center text-slate-400 leading-relaxed">
-              최초 로그인 시 자동으로 계정이 생성됩니다.<br />
-              관리자가 역할과 부서를 지정합니다.
-            </p>
+            {/* 팝업 차단 시 안내 */}
+            <div className="text-xs text-center text-slate-400 leading-relaxed space-y-1">
+              <p>버튼을 클릭하거나 화면 상단의 Google 로그인 창을 이용하세요.</p>
+              <p className="text-slate-300">최초 로그인 시 자동으로 계정이 생성됩니다.</p>
+            </div>
           </div>
         </div>
       </div>
